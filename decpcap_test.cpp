@@ -17,10 +17,13 @@ int main (int argc, char ** argv)
 	}
 
 	char* errbuf = new char[DP_ERRBUF_SIZE];
+	char port_filter[]="port 22";
+	char dev[]="enp1s0f0";
+
 
 	dp_handle * newhandle = dp_open_offline(argv[1], errbuf); 
 	dp_addcb (newhandle, dp_packet_tcp, process_tcp);
-	int ret = dp_dispatch (newhandle, -1, NULL, 0);
+	int ret = dp_dispatch (newhandle, -1, NULL, 0, port_filter, dev, errbuf);
 	if (ret == -1)
 	{
 		std::cout << "Error dispatching: " << dp_geterr(newhandle);

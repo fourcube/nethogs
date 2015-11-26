@@ -292,9 +292,27 @@ void dp_pcap_callback (u_char * u_handle, const struct pcap_pkthdr * header, con
 	free (userdata_copy);
 }
 
-int dp_dispatch (struct dp_handle * handle, int count, u_char *user, int size) {
+int dp_dispatch (struct dp_handle * handle, int count, u_char *user, int size, const char* p_filter, const char* cur_dev, char * errbuf) {
 	handle->userdata = user;
 	handle->userdata_size = size;
+	if (p_filter != NULL) {
+		struct bpf_program fp;		/* The compiled filter expression */
+		bpf_u_int32 mask;		/* The netmask of our sniffing device */
+		bpf_u_int32 net;		/* The IP of our sniffing device */
+		if (pcap_lookupnet(cur_dev, &net, &mask, errbuf) == -1) {
+			fprintf(stderr, "Can't get netmask for device %s\n", cur_dev);
+			net = 0;
+			mask = 0;
+		}
+		if (pcap_compile(handle->pcap_handle, &fp, p_filter, 0, net) == -1) {
+			fprintf(stderr, "Couldn't parse filter %s: %s\n", p_filter, pcap_geterr(handle->pcap_handle));
+			return(-2);
+		}
+		if (pcap_setfilter(handle->pcap_handle, &fp) == -1) {
+			fprintf(stderr, "Couldn't install filter %s: %s\n", p_filter, pcap_geterr(handle->pcap_handle));
+			return(-2);
+		}
+	}
 	return pcap_dispatch (handle->pcap_handle, count, dp_pcap_callback, (u_char *)handle);
 }
 

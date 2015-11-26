@@ -53,7 +53,7 @@ void dp_parse (enum dp_packet_type type, void * packet);
 
 /* functions to start monitoring */
 
-int dp_dispatch (struct dp_handle * handler, int count, u_char *user, int size);
+int dp_dispatch (struct dp_handle * handler, int count, u_char *user, int size, const char* p_filter, const char* cur_dev, char * errbuf);
 
 /* functions that simply call libpcap */
 

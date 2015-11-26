@@ -32,11 +32,19 @@ extern "C" {
 #include "devices.h"
 
 extern Process * unknownudp;
+// viewMode: kb/s or total
+extern int VIEWMODE_KBPS;
+extern int VIEWMODE_TOTAL_KB;
+extern int VIEWMODE_TOTAL_B;
+extern int VIEWMODE_TOTAL_MB;
+extern int viewMode;
+extern int nViewModes;
 
 unsigned refreshdelay = 1;
 bool tracemode = false;
 bool bughuntmode = false;
 bool needrefresh = true;
+std::string port_filter = "none";
 //packet_type packettype = packet_ethernet;
 //dp_link_type linktype = dp_link_ethernet;
 const char version[] = " version " VERSION "." SUBVERSION "." MINORVERSION;
@@ -227,13 +235,16 @@ static void versiondisplay(void)
 static void help(void)
 {
 	//std::cerr << "usage: nethogs [-V] [-b] [-d seconds] [-t] [-p] [-f (eth|ppp))] [device [device [device ...]]]\n";
-	std::cerr << "usage: nethogs [-V] [-b] [-d seconds] [-t] [-f string [-f ...]] [-p] [device [device [device ...]]]\n";
+	std::cerr << "usage: nethogs [-V] [-b] [-d seconds] [-t] [-f string [-f ...]] [-p] [-l filter expression] [-v kbps|b|kb|mb] [device [device [device ...]]]\n";
 	std::cerr << "		-V : prints version.\n";
 	std::cerr << "		-d : delay for update refresh rate in seconds. default is 1.\n";
 	std::cerr << "		-t : tracemode.\n";
-	std::cerr << "		-f : filter by string in command line. Can be repeated.\n";
+	std::cerr << "		-f : filter by string in command line or pid. Can be repeated.\n";
+	std::cerr << "		-l : filtering traffic by filter expression support in libpcap.\n";
+	std::cerr << "		filter expression example: \"tcp and src host 192.168.1.1 and (dst port 22 or dst port 23)\"\n";
 	std::cerr << "		-b : bughunt mode - implies tracemode.\n";
 	std::cerr << "		-p : sniff in promiscious mode (not recommended).\n";
+	std::cerr << "		-v : choose view mode(kbps|b|kb|mb).\n";
 	std::cerr << "		device : device(s) to monitor. default is eth0\n";
 	std::cerr << std::endl;
 	std::cerr << "When nethogs is running, press:\n";
@@ -262,7 +273,7 @@ int main (int argc, char** argv)
 	int promisc = 0;
 
 	int opt;
-	while ((opt = getopt(argc, argv, "Vhbtpd:f:")) != -1) {
+	while ((opt = getopt(argc, argv, "Vhbtpd:f:l:v:")) != -1) {
 		switch(opt) {
 			case 'V':
 				versiondisplay();
@@ -286,6 +297,32 @@ int main (int argc, char** argv)
 			case 'f':
 				addProcessFilter(optarg);
 				break;
+			case 'l':
+				port_filter = optarg;
+				break;
+			case 'v':{
+				std::string soptarg;
+				soptarg = optarg;
+				if (soptarg == "kbps"){
+					viewMode = VIEWMODE_KBPS;
+				}
+				else if (soptarg == "b"){
+					viewMode = VIEWMODE_TOTAL_B;
+				}
+				else if (soptarg == "kb"){
+					viewMode = VIEWMODE_TOTAL_KB;
+				}
+				else if (soptarg == "mb"){
+					viewMode = VIEWMODE_TOTAL_MB;
+				}
+				else{
+					std::cerr << "Use default view mode : kbps\n";
+				}
+				break;
+			}
+				// port_filter.c_str();
+				//port_filter = (char *)malloc(sizeof(char)* strlen(optarg));
+				//memcpy(port_filter,optarg,)
 			/*
 			case 'f':
 				argv++;
@@ -322,6 +359,7 @@ int main (int argc, char** argv)
 
 	handle * handles = NULL;
 	device * current_dev = devices;
+	// for each device for monitoring, create a new handle
 	while (current_dev != NULL) {
 		getLocal(current_dev->name, tracemode);
 		if ((!tracemode) && (!DEBUG)){
@@ -332,6 +370,9 @@ int main (int argc, char** argv)
 		dp_handle * newhandle = dp_open_live(current_dev->name, BUFSIZ, promisc, 100, errbuf);
 		if (newhandle != NULL)
 		{
+			// process_ip, process_tcp etc. are callback functions, 
+			// they will be called on receiveing a packet
+			// these callback function are added to newhandle, so the newhandle will call them based on packet type.
 			dp_addcb (newhandle, dp_packet_ip, process_ip);
 			dp_addcb (newhandle, dp_packet_ip6, process_ip6);
 			dp_addcb (newhandle, dp_packet_tcp, process_tcp);
@@ -347,6 +388,8 @@ int main (int argc, char** argv)
 			{
 				fprintf(stderr, "Error putting libpcap in nonblocking mode\n");
 			}
+			// handles acturally is a handle list. 
+			// the handle class, take newhandle and the exist hanle list and create a new handle list including all
 			handles = new handle (newhandle, current_dev->name, handles);
 		}
 		else
@@ -386,7 +429,13 @@ int main (int argc, char** argv)
 			struct dpargs * userdata = (dpargs *) malloc (sizeof (struct dpargs));
 			userdata->sa_family = AF_UNSPEC;
 			currentdevice = current_handle->devicename;
-			int retval = dp_dispatch (current_handle->content, -1, (u_char *)userdata, sizeof (struct dpargs));
+			int retval;
+			if (port_filter != "none"){
+				retval = dp_dispatch (current_handle->content, -1, (u_char *)userdata, sizeof (struct dpargs), port_filter.c_str(), currentdevice, errbuf);
+			}
+			else{
+				retval = dp_dispatch (current_handle->content, -1, (u_char *)userdata, sizeof (struct dpargs), NULL, NULL, NULL);
+			}
 			if (retval == -1 || retval == -2)
 			{
 				std::cerr << "Error dispatching" << std::endl;
