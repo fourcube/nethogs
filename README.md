@@ -1,4 +1,4 @@
-# nethogs
+# nethogs !!!UNMAINTAINED!!! Use raboof/nethogs.
 
 Fork of http://nethogs.sf.net. 
 
